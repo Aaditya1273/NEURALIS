@@ -1,0 +1,21 @@
+[package]
+name    = "neuralis"
+version = "1.0.0"
+
+# InitiaStdlib gives us: signer, vector, error, string, event, object,
+# table, primary_fungible_store, block, cosmos, fungible_asset, etc.
+[dependencies]
+InitiaStdlib = {
+    git    = "https://github.com/initia-labs/movevm.git",
+    subdir = "precompile/modules/initia_stdlib",
+    rev    = "main"
+}
+
+# ── Addresses ────────────────────────────────────────────────────────────────
+# Replace <YOUR_HEX_ADDRESS> with the output of:
+#   initiad keys parse <YOUR_INIT_ADDRESS>
+# e.g. 0x3f2a1b...
+[addresses]
+neuralis     = "<YOUR_HEX_ADDRESS>"
+std          = "0x1"
+initia_std   = "0x1"
