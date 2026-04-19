@@ -6,7 +6,7 @@ import { AnimatedDivider } from "./Hero";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-const ctaWords = "Sign up for free today".split(" ");
+const ctaWords = "Initialize your sovereign agent".split(" ");
 
 export const CallToAction = () => {
   const sectionRef = useRef(null);
@@ -79,8 +79,8 @@ export const CallToAction = () => {
               transition={{ duration: 0.7, ease: EASE, delay: 0.3 }}
               viewport={{ once: true }}
             >
-              Celebrate the joy of accomplishment with an app designed to track
-              your progress and motivate your efforts.
+              Execute trades, automate workflows, and join the first on-chain 
+              economy driven entirely by artificial intelligence.
             </motion.p>
 
             {/* Parallax decorative images */}
@@ -107,7 +107,7 @@ export const CallToAction = () => {
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.2 }}
             >
-              Get for free
+              Launch Terminal
             </motion.button>
             <motion.button
               className="inline-flex items-center gap-1.5 text-sm font-medium px-6 py-3 rounded-xl transition-colors"
@@ -115,7 +115,7 @@ export const CallToAction = () => {
               whileHover={{ color: "#ffffff", borderColor: "rgba(255,255,255,0.25)", x: 2 }}
               transition={{ duration: 0.2 }}
             >
-              <span>Learn more</span>
+              <span>Read Docs</span>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>

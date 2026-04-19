@@ -73,7 +73,7 @@ export const Hero = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: EASE, delay: 0.1 }}
             >
-              Version 2.0 is here
+              Version 1.0 is here
             </motion.div>
 
             {/* Headline — word-by-word stagger */}
@@ -106,8 +106,7 @@ export const Hero = () => {
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               transition={{ duration: 0.8, ease: EASE, delay: 0.55 }}
             >
-              Celebrate the joy of accomplishment with an app designed to track
-              your progress, motivate your efforts, and celebrate your success.
+              Unleash autonomous AI agents on the first sovereign Minitia. Secure institutional yields, automate strategies, and scale seamlessly with sub-second finality.
             </motion.p>
 
             {/* CTAs — staggered slide-up */}

@@ -7,19 +7,19 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 
 const pricingTiers = [
   {
-    title: "Free", monthlyPrice: 0, buttonText: "Get started for free",
+    title: "Free", monthlyPrice: 0, buttonText: "Start building",
     popular: false, inverse: false,
-    features: ["Up to 5 project members", "Unlimited tasks and projects", "2GB storage", "Integrations", "Basic support"],
+    features: ["1 YieldMind Agent instance", "Standard RPC access (Rate-limited)", "10,000 compute units / mo", "Community Discord support", "Testnet deployment"],
   },
   {
-    title: "Pro", monthlyPrice: 9, buttonText: "Sign up now",
+    title: "Pro", monthlyPrice: 9, buttonText: "Deploy Vault",
     popular: true, inverse: true,
-    features: ["Up to 50 project members", "Unlimited tasks and projects", "50GB storage", "Integrations", "Priority support", "Advanced support", "Export support"],
+    features: ["Unlimited AI Agent instances", "Zero-latency smart contract execution", "Automated portfolio rebalancing", "Priority transaction sequencing", "24/7 Engineering SLA"],
   },
   {
-    title: "Business", monthlyPrice: 19, buttonText: "Sign up now",
+    title: "Enterprise", monthlyPrice: 29, buttonText: "Apply process",
     popular: false, inverse: false,
-    features: ["Up to 5 project members", "Unlimited tasks and projects", "200GB storage", "Integrations", "Dedicated account manager", "Custom fields", "Advanced analytics", "Export capabilities", "API access", "Advanced security features"],
+    features: ["Full Validator Node provisioning", "100% MEV capture capabilities", "Direct L1 orderbook access", "Custom bespoke yield strategies", "Dedicated protocol integration team", "Hardware wallet multisig setup"],
   },
 ];
 
@@ -44,9 +44,9 @@ export const Pricing = () => {
             transition={{ duration: 0.8, ease: EASE }}
             viewport={{ once: true, margin: "-60px" }}
           >
-            <h2 className="section-title">Pricing</h2>
+            <h2 className="section-title">Infrastructure Pricing</h2>
             <p className="section-description mt-5">
-              Free forever. Upgrade for unlimited tasks, better security, and exclusive features.
+              Secure institutional yields, automate strategies, and scale seamlessly with tiered appchain capacity.
             </p>
           </motion.div>
 
