@@ -44,10 +44,10 @@ Users simply say what they want in natural language. Agents do the rest — and 
 
 While other submissions offer pieces (marketplaces, spending limits, oracles, yield bots), **NEURALIS is the only vertical super-appchain** that closes the full loop:
 
-| Feature                  | Most Submissions          | NEURALIS                          |
+| Feature                  | traditional               | NEURALIS                          |
 |--------------------------|---------------------------|-----------------------------------|
-| Agent spending limits    | Yes (DropPilot, IntentOS) | Yes + on-chain enforcement       |
-| Agent marketplace        | Yes (SIGIL, AgentCommerce)| Yes + self-earning agents        |
+| Agent spending limits    | Yes                       | Yes + on-chain enforcement       |
+| Agent marketplace        | Yes .                     | Yes + self-earning agents        |
 | Verifiable labor         | No                        | **MoveVM Labor Badges (SBT)**    |
 | Closed economic loop     | No                        | Earn → Play → Grow reputation    |
 | Real sequencer revenue   | Theoretical               | **Demo-able cross-chain fees**   |
