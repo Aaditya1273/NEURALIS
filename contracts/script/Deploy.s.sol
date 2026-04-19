@@ -8,104 +8,97 @@ import {StrategyRegistry}    from "../src/StrategyRegistry.sol";
 import {RiskEngine}          from "../src/RiskEngine.sol";
 import {VaultManager}        from "../src/VaultManager.sol";
 import {KeeperExecutor}      from "../src/KeeperExecutor.sol";
-import {InitiaDEXLPStrategy} from "../src/strategies/InitiaDEXLPStrategy.sol";
+import {SequencerFeeVault}   from "../src/SequencerFeeVault.sol";
+import {MockYieldStrategy}   from "../src/strategies/MockYieldStrategy.sol";
+import {MockUSDC}            from "../src/mocks/MockUSDC.sol";
 
-/// @notice Production deployment for NEURALIS — The Agent Economy Appchain.
+/// @notice NEURALIS testnet deployment using MockYieldStrategy for all 3 slots.
+/// Real DEX/Lending/Staking strategies will replace these once those protocols
+/// are deployed on neuralis-1.
 ///
-/// Deployment order:
-///   1. StrategyRegistry
-///   2. RiskEngine(registry)
-///   3. VaultManager(usdc, registry, riskEngine)
-///   4. KeeperExecutor(vaultManager, agentSigner)
-///   5. Grant KEEPER_ROLE → KeeperExecutor
-///   6. Deploy InitiaDEXLPStrategy (real yield via Uniswap V2 DEX)
-///   7. Register strategy in registry
-///   8. Write deployments.json
-///
-/// Required env vars (copy contracts/.env.example → contracts/.env):
-///   PRIVATE_KEY            — deployer private key
-///   DEPLOYER_ADDRESS       — deployer public address
-///   USDC_ADDRESS           — bridged USDC on the NEURALIS EVM chain
-///   AGENT_SIGNER_ADDRESS   — public address of the AI-agent signing key
-///   DEX_ROUTER_ADDRESS     — Uniswap V2 compatible router on NEURALIS
-///   DEX_PAIR_ADDRESS       — USDC/tokenB LP pair contract address
-///   DEX_TOKEN_B_ADDRESS    — second token in the USDC/tokenB LP pair
-///   DEX_INITIAL_APY        — initial APY estimate in bps (e.g. 500 = 5%)
-///   DEX_INITIAL_RISK       — initial risk score 0-100 (e.g. 25)
-///   INITIASCAN_URL         — block explorer API URL (for --verify)
-///   INITIASCAN_API_KEY     — block explorer API key
+/// Required env vars (contracts/.env):
+///   PRIVATE_KEY, DEPLOYER_ADDRESS, USDC_ADDRESS, AGENT_SIGNER_ADDRESS, TREASURY_ADDRESS
 contract Deploy is Script {
     function run() external {
         address deployer    = vm.envAddress("DEPLOYER_ADDRESS");
         address usdc        = vm.envAddress("USDC_ADDRESS");
         address agentSigner = vm.envAddress("AGENT_SIGNER_ADDRESS");
-        address dexRouter   = vm.envAddress("DEX_ROUTER_ADDRESS");
-        address dexPair     = vm.envAddress("DEX_PAIR_ADDRESS");
-        address tokenB      = vm.envAddress("DEX_TOKEN_B_ADDRESS");
-        uint256 initialAPY  = vm.envUint("DEX_INITIAL_APY");
-        uint8   initialRisk = uint8(vm.envUint("DEX_INITIAL_RISK"));
+        address treasury    = vm.envAddress("TREASURY_ADDRESS");
 
         vm.startBroadcast();
 
         // ── 1. StrategyRegistry ──────────────────────────────────────────────
         StrategyRegistry registry = new StrategyRegistry(deployer);
-        console2.log("StrategyRegistry :", address(registry));
+        console2.log("StrategyRegistry    :", address(registry));
 
         // ── 2. RiskEngine ────────────────────────────────────────────────────
         RiskEngine riskEngine = new RiskEngine(address(registry), deployer);
-        console2.log("RiskEngine       :", address(riskEngine));
+        console2.log("RiskEngine          :", address(riskEngine));
 
         // ── 3. VaultManager ──────────────────────────────────────────────────
         VaultManager vaultManager = new VaultManager(
-            IERC20(usdc),
-            address(registry),
-            address(riskEngine),
-            deployer
+            IERC20(usdc), address(registry), address(riskEngine), deployer
         );
-        console2.log("VaultManager     :", address(vaultManager));
+        console2.log("VaultManager        :", address(vaultManager));
 
-        // ── 4. KeeperExecutor ────────────────────────────────────────────────
+        // ── 4. SequencerFeeVault ─────────────────────────────────────────────
+        SequencerFeeVault feeVault = new SequencerFeeVault(
+            usdc, address(vaultManager), treasury, deployer
+        );
+        console2.log("SequencerFeeVault   :", address(feeVault));
+
+        // ── 5. KeeperExecutor ────────────────────────────────────────────────
         KeeperExecutor keeperExecutor = new KeeperExecutor(
-            address(vaultManager),
-            agentSigner,
-            deployer
+            address(vaultManager), agentSigner, address(feeVault), deployer
         );
-        console2.log("KeeperExecutor   :", address(keeperExecutor));
+        console2.log("KeeperExecutor      :", address(keeperExecutor));
 
-        // ── 5. Grant KEEPER_ROLE ─────────────────────────────────────────────
+        // ── 6. Grant KEEPER_ROLE ─────────────────────────────────────────────
         vaultManager.grantRole(vaultManager.KEEPER_ROLE(), address(keeperExecutor));
-        console2.log("KEEPER_ROLE granted to KeeperExecutor");
+        console2.log("KEEPER_ROLE granted");
 
-        // ── 6. InitiaDEXLPStrategy ───────────────────────────────────────────
-        InitiaDEXLPStrategy dexStrategy = new InitiaDEXLPStrategy(
-            dexRouter,
-            dexPair,
-            usdc,
-            tokenB,
-            address(vaultManager),
-            initialAPY,
-            initialRisk,
-            deployer
+        // ── 7. Fee allowance ─────────────────────────────────────────────────
+        vaultManager.setKeeperFeeAllowance(address(keeperExecutor), 10_000e6);
+
+        // ── 8. Three MockYieldStrategies (varied APY/risk for agent scoring) ─
+        // Strategy A: 6.20% APY, risk 22 — highest yield
+        MockYieldStrategy strategyA = new MockYieldStrategy(
+            usdc, address(vaultManager), 620, 22, deployer
         );
-        console2.log("InitiaDEXLPStrategy:", address(dexStrategy));
+        // Strategy B: 4.80% APY, risk 15 — safest
+        MockYieldStrategy strategyB = new MockYieldStrategy(
+            usdc, address(vaultManager), 480, 15, deployer
+        );
+        // Strategy C: 3.10% APY, risk 35 — lowest yield
+        MockYieldStrategy strategyC = new MockYieldStrategy(
+            usdc, address(vaultManager), 310, 35, deployer
+        );
+        console2.log("StrategyA (6.20%)   :", address(strategyA));
+        console2.log("StrategyB (4.80%)   :", address(strategyB));
+        console2.log("StrategyC (3.10%)   :", address(strategyC));
 
-        // ── 7. Register strategy (max 35%) ───────────────────────────────────
-        registry.addStrategy(address(dexStrategy), 3500);
-        console2.log("InitiaDEXLPStrategy registered");
+        // ── 9. Register strategies ───────────────────────────────────────────
+        registry.addStrategy(address(strategyA), 3500);
+        registry.addStrategy(address(strategyB), 3500);
+        registry.addStrategy(address(strategyC), 3500);
+        console2.log("All 3 strategies registered");
 
         vm.stopBroadcast();
 
-        // ── 8. Write deployments.json ────────────────────────────────────────
+        // ── 10. Write deployments.json ───────────────────────────────────────
         string memory json = "deployments";
-        vm.serializeAddress(json, "strategyRegistry", address(registry));
-        vm.serializeAddress(json, "riskEngine",       address(riskEngine));
-        vm.serializeAddress(json, "vaultManager",     address(vaultManager));
-        vm.serializeAddress(json, "keeperExecutor",   address(keeperExecutor));
-        vm.serializeAddress(json, "dexStrategy",      address(dexStrategy));
-        vm.serializeAddress(json, "usdc",             usdc);
+        vm.serializeAddress(json, "strategyRegistry",  address(registry));
+        vm.serializeAddress(json, "riskEngine",        address(riskEngine));
+        vm.serializeAddress(json, "vaultManager",      address(vaultManager));
+        vm.serializeAddress(json, "sequencerFeeVault", address(feeVault));
+        vm.serializeAddress(json, "keeperExecutor",    address(keeperExecutor));
+        vm.serializeAddress(json, "strategyA",         address(strategyA));
+        vm.serializeAddress(json, "strategyB",         address(strategyB));
+        vm.serializeAddress(json, "strategyC",         address(strategyC));
+        vm.serializeAddress(json, "usdc",              usdc);
+        vm.serializeAddress(json, "treasury",          treasury);
         string memory output = vm.serializeUint(json, "chainId", block.chainid);
-
         vm.writeJson(output, "./deployments.json");
-        console2.log("deployments.json written.");
+        console2.log("deployments.json written");
     }
 }

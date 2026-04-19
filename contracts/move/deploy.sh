@@ -104,6 +104,20 @@ minitiad tx move execute "$HEX_ADDR" programmable_intents initialize \
   --yes
 echo "      programmable_intents initialized"
 
+# Initialize AgentArena
+echo "      Initializing agent_arena..."
+minitiad tx move execute "$HEX_ADDR" agent_arena initialize \
+  --args '[]' \
+  --from "$MODULE_OWNER_KEY" \
+  --keyring-backend test \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices "0.15$FEE_DENOM" \
+  --node "$L2_RPC" \
+  --chain-id "$L2_CHAIN_ID" \
+  --yes
+echo "      agent_arena initialized"
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "──────────────────────────────────────────────────────"

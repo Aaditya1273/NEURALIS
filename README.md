@@ -70,6 +70,7 @@ This is not another dApp. It is **infrastructure for the 2026 AgentFi economy**.
 - **Oracle Hook:** Initia native oracle for off-chain signals
 
 Everything runs at **100 ms block times** with zero gas friction for users.
+Chain neuralis-1 is live (Bridge ID: 1849)
 
 ---
 

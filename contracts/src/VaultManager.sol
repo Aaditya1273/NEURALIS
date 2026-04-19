@@ -141,6 +141,13 @@ contract VaultManager is ERC4626, AccessControl, ReentrancyGuard {
         return activeStrategies;
     }
 
+    /// @notice Allow KeeperExecutor to pull a fee amount from idle vault USDC.
+    ///         Call this after deploying KeeperExecutor with a fee vault.
+    ///         Set to type(uint256).max for unlimited (revoke by setting to 0).
+    function setKeeperFeeAllowance(address keeper, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(asset()).approve(keeper, amount);
+    }
+
     // ─── Internal ────────────────────────────────────────────────────────────
 
     /// @dev Distribute idle balance to strategies according to their bps.

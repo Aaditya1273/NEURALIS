@@ -53,7 +53,7 @@ contract KeeperExecutorTest is Test {
         registry.addStrategy(address(stratB), 5000);
         registry.addStrategy(address(stratC), 5000);
 
-        executor = new KeeperExecutor(address(vault), signerAddr, admin);
+        executor = new KeeperExecutor(address(vault), signerAddr, address(0), admin);
         vault.grantRole(vault.KEEPER_ROLE(), address(executor));
     }
 

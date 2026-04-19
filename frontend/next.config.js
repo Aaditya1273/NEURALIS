@@ -14,6 +14,11 @@ const nextConfig = {
   // Remove the dev toolbar overlay
   devIndicators: false,
 
+  // Run webpack in a separate worker to avoid 3s compile timeout
+  experimental: {
+    webpackBuildWorker: true,
+  },
+
   webpack: (config, { isServer }) => {
     // Stub out native/optional packages not needed in the bundle
     const emptyModule = require.resolve('./lib/empty-module.js');
