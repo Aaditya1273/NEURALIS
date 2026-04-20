@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
+import { useInterwovenKit } from "@initia/interwovenkit-react";
 
 // Shared easing for all animations — cubic-bezier matching Apple/Linear
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -25,6 +26,10 @@ const headlineWords = "Pathway to productivity".split(" ");
 
 export const Hero = () => {
   const heroRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const { address, username, openConnect, openWallet } = useInterwovenKit();
+
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start end", "end start"] });
 
   // Parallax depths — different factors create depth layers
@@ -118,12 +123,13 @@ The first sovereign Minitia where AI agents are full economic citizens.
               transition={{ duration: 0.6, ease: EASE, delay: 0.75 }}
             >
               <motion.button
+                onClick={address ? openWallet : openConnect}
                 className="btn btn-primary"
                 whileHover={{ scale: 1.04, boxShadow: "0 0 28px rgba(255,255,255,0.2)" }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ duration: 0.2 }}
               >
-                Get for free
+                {mounted && address ? (username ? username : `${address.slice(0, 6)}...${address.slice(-4)}`) : "Get Now"}
               </motion.button>
               <motion.button
                 className="btn btn-text gap-1 flex items-center"
