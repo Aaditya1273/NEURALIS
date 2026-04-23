@@ -1,16 +1,9 @@
 'use strict';
 
-// ── Mock Anthropic SDK ────────────────────────────────────────────────────────
+// ── Mock global fetch for Groq API ───────────────────────────────────────────
 
-const mockCreate = jest.fn();
-
-jest.mock('@anthropic-ai/sdk', () => {
-  return {
-    default: class Anthropic {
-      messages = { create: mockCreate };
-    },
-  };
-});
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -29,8 +22,11 @@ function makeStrategies(allocations = { [ADDR_A]: 5000, [ADDR_B]: 5000 }) {
 }
 
 function mockResponse(allocations, explanation = 'Test explanation') {
-  mockCreate.mockResolvedValueOnce({
-    content: [{ text: JSON.stringify({ allocations, explanation }) }],
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({
+      choices: [{ message: { content: JSON.stringify({ allocations, explanation }) } }],
+    }),
   });
 }
 
@@ -38,12 +34,12 @@ function mockResponse(allocations, explanation = 'Test explanation') {
 
 describe('recommender', () => {
   beforeEach(() => {
-    process.env.ANTHROPIC_API_KEY = 'test-key';
+    process.env.GROQ_API_KEY = 'test-key';
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GROQ_API_KEY;
   });
 
   test('returns parsed allocations and explanation', async () => {
@@ -54,12 +50,15 @@ describe('recommender', () => {
     expect(result.explanation).toBe('Test explanation');
   });
 
-  test('calls Claude with correct model', async () => {
+  test('calls Groq with correct model', async () => {
     mockResponse({ [ADDR_A]: 5000, [ADDR_B]: 5000 });
     const { recommend } = require('../recommender');
     await recommend(makeStrategies());
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'claude-sonnet-4-20250514' }),
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.groq.com/openai/v1/chat/completions',
+      expect.objectContaining({
+        body: expect.stringContaining('llama-3.3-70b-versatile'),
+      })
     );
   });
 
@@ -70,7 +69,12 @@ describe('recommender', () => {
   });
 
   test('throws if response is not valid JSON', async () => {
-    mockCreate.mockResolvedValueOnce({ content: [{ text: 'not json at all' }] });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'not json at all' } }],
+      }),
+    });
     const { recommend } = require('../recommender');
     await expect(recommend(makeStrategies())).rejects.toThrow(/non-JSON/);
   });
@@ -82,8 +86,11 @@ describe('recommender', () => {
   });
 
   test('throws if allocations field is missing', async () => {
-    mockCreate.mockResolvedValueOnce({
-      content: [{ text: JSON.stringify({ explanation: 'no allocations key' }) }],
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: JSON.stringify({ explanation: 'no allocations key' }) } }],
+      }),
     });
     const { recommend } = require('../recommender');
     await expect(recommend(makeStrategies())).rejects.toThrow(/allocations/);

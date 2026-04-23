@@ -85,20 +85,7 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
-        // ── 10. Write deployments.json ───────────────────────────────────────
-        string memory json = "deployments";
-        vm.serializeAddress(json, "strategyRegistry",  address(registry));
-        vm.serializeAddress(json, "riskEngine",        address(riskEngine));
-        vm.serializeAddress(json, "vaultManager",      address(vaultManager));
-        vm.serializeAddress(json, "sequencerFeeVault", address(feeVault));
-        vm.serializeAddress(json, "keeperExecutor",    address(keeperExecutor));
-        vm.serializeAddress(json, "strategyA",         address(strategyA));
-        vm.serializeAddress(json, "strategyB",         address(strategyB));
-        vm.serializeAddress(json, "strategyC",         address(strategyC));
-        vm.serializeAddress(json, "usdc",              usdc);
-        vm.serializeAddress(json, "treasury",          treasury);
-        string memory output = vm.serializeUint(json, "chainId", block.chainid);
-        vm.writeJson(output, "./deployments.json");
-        console2.log("deployments.json written");
+        // ── 10. Manual logging ───────────────────────────────────────
+        console2.log("--- DEPLOYMENT COMPLETE ---");
     }
 }

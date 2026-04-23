@@ -1,44 +1,43 @@
-/// AgentArena — 1v1 turn-based battle game for NEURALIS agents.
+/// AgentArena - 1v1 turn-based battle game for NEURALIS agents.
 ///
 /// How it works
-/// ────────────
+/// ------------------------------------
 /// 1. Players stake Neural Credits (u64, earned from yield harvesting) to enter.
 /// 2. Two players are matched into a Battle.
 /// 3. Each turn, a player submits a move (0=ATTACK, 1=DEFEND, 2=SPECIAL).
 /// 4. The outcome is resolved deterministically using block hash entropy.
 /// 5. The winner receives both stakes minus a 5% protocol fee.
-/// 6. A LaborBadge ARENA_CHAMPION is minted for the winner (via event — the
+/// 6. A LaborBadge ARENA_CHAMPION is minted for the winner (via event - the
 ///    keeper agent listens and calls labor_badge::mint_badge).
 ///
 /// Credit system
-/// ─────────────
+/// ---------------------------------------
 /// Neural Credits are tracked in this module as a simple u64 balance per address.
 /// The admin (keeper) mints credits after each successful vault rebalance cycle.
 /// Credits are non-transferable except through battle stakes.
 ///
 /// Move types (u8)
-/// ───────────────
-///   0 = ATTACK  — deals 20 damage
-///   1 = DEFEND  — blocks 15 damage, deals 5
-///   2 = SPECIAL — deals 30 damage, costs 10 extra HP
+/// ---------------------------------------------
+///   0 = ATTACK  - deals 20 damage
+///   1 = DEFEND  - blocks 15 damage, deals 5
+///   2 = SPECIAL - deals 30 damage, costs 10 extra HP
 ///
 /// Battle states (u8)
-/// ──────────────────
-///   0 = WAITING   — created, waiting for opponent
-///   1 = ACTIVE    — both players joined, turns in progress
-///   2 = FINISHED  — winner decided
-module neuralis::agent_arena {
+/// ------------------------------------------------------
+///   0 = WAITING   - created, waiting for opponent
+///   1 = ACTIVE    - both players joined, turns in progress
+///   2 = FINISHED  - winner decided
+module neuralis::agent_arena_v2 {
     use std::signer;
     use std::error;
     use std::string::String;
     use std::bcs;
-    use std::vector;
     use initia_std::event;
     use initia_std::table::{Self, Table};
     use initia_std::object::{Self, ExtendRef};
     use initia_std::block;
 
-    // ── Constants ─────────────────────────────────────────────────────────────
+    // ------ Constants ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     const MOVE_ATTACK  : u8 = 0;
     const MOVE_DEFEND  : u8 = 1;
@@ -51,7 +50,7 @@ module neuralis::agent_arena {
     const STARTING_HP    : u64 = 100;
     const PROTOCOL_FEE_BPS: u64 = 500; // 5%
 
-    // ── Error codes ───────────────────────────────────────────────────────────
+    // ------ Error codes ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     const ENOT_ADMIN           : u64 = 1;
     const EALREADY_INITIALIZED : u64 = 2;
@@ -64,14 +63,14 @@ module neuralis::agent_arena {
     const EINVALID_MOVE        : u64 = 9;
     const ECANNOT_FIGHT_SELF   : u64 = 10;
 
-    // ── On-chain resources ────────────────────────────────────────────────────
+    // ------ On-chain resources ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     struct Registry has key {
         admin          : address,
         extend_ref     : ExtendRef,
-        /// address_bytes → Neural Credit balance
+        /// address_bytes --- Neural Credit balance
         credits        : Table<vector<u8>, u64>,
-        /// battle_id → Battle
+        /// battle_id --- Battle
         battles        : Table<u64, Battle>,
         next_battle_id : u64,
         total_fees_collected: u64,
@@ -91,8 +90,9 @@ module neuralis::agent_arena {
         created_at  : u64,
     }
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ------ Events ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+    #[event]
     struct CreditsGrantedEvent has drop, store {
         recipient   : address,
         amount      : u64,
@@ -100,6 +100,7 @@ module neuralis::agent_arena {
         block_height: u64,
     }
 
+    #[event]
     struct BattleCreatedEvent has drop, store {
         battle_id   : u64,
         player1     : address,
@@ -107,12 +108,14 @@ module neuralis::agent_arena {
         block_height: u64,
     }
 
+    #[event]
     struct BattleJoinedEvent has drop, store {
         battle_id   : u64,
         player2     : address,
         block_height: u64,
     }
 
+    #[event]
     struct TurnPlayedEvent has drop, store {
         battle_id   : u64,
         player      : address,
@@ -121,6 +124,7 @@ module neuralis::agent_arena {
         block_height: u64,
     }
 
+    #[event]
     struct BattleFinishedEvent has drop, store {
         battle_id   : u64,
         winner      : address,
@@ -129,19 +133,19 @@ module neuralis::agent_arena {
         block_height: u64,
     }
 
-    // ── Initialization ────────────────────────────────────────────────────────
+    // ------ Initialization ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     public entry fun initialize(admin: &signer) {
         let admin_addr = signer::address_of(admin);
         let reg_addr   = registry_object_address(admin_addr);
         assert!(!exists<Registry>(reg_addr), error::already_exists(EALREADY_INITIALIZED));
 
-        let constructor = object::create_named_object(admin, b"neuralis_agent_arena_v1");
+        let constructor = object::create_named_object(admin, b"neuralis_agent_arena_v2");
         let extend_ref  = object::generate_extend_ref(&constructor);
         let obj_signer  = object::generate_signer(&constructor);
 
         move_to(&obj_signer, Registry {
-            admin,
+            admin               : admin_addr,
             extend_ref,
             credits             : table::new<vector<u8>, u64>(),
             battles             : table::new<u64, Battle>(),
@@ -150,7 +154,7 @@ module neuralis::agent_arena {
         });
     }
 
-    // ── Admin: grant credits ──────────────────────────────────────────────────
+    // ------ Admin: grant credits ------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Mint Neural Credits for a player after a successful vault rebalance.
     /// Called by the keeper agent after each triggered rebalance.
@@ -177,15 +181,14 @@ module neuralis::agent_arena {
         event::emit(CreditsGrantedEvent { recipient, amount, reason, block_height });
     }
 
-    // ── Create battle ─────────────────────────────────────────────────────────
+    // ------ Create battle ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Player1 creates a battle by staking Neural Credits.
     /// Returns the battle_id via event.
     public entry fun create_battle(player1: &signer, stake: u64) acquires Registry {
         let p1_addr  = signer::address_of(player1);
-        let reg_addr = registry_object_address(p1_addr);
 
-        // Find registry — we need the admin address to locate it.
+        // Find registry - we need the admin address to locate it.
         // Since the registry is stored at object::create_object_address(&admin, seed),
         // and we don't know admin here, we require the player to pass the module address.
         // Workaround: store registry at a well-known address derived from @neuralis.
@@ -223,7 +226,7 @@ module neuralis::agent_arena {
         event::emit(BattleCreatedEvent { battle_id, player1: p1_addr, stake, block_height });
     }
 
-    // ── Join battle ───────────────────────────────────────────────────────────
+    // ------ Join battle ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     public entry fun join_battle(player2: &signer, battle_id: u64) acquires Registry {
         let p2_addr  = signer::address_of(player2);
@@ -251,7 +254,7 @@ module neuralis::agent_arena {
         event::emit(BattleJoinedEvent { battle_id, player2: p2_addr, block_height });
     }
 
-    // ── Play turn ─────────────────────────────────────────────────────────────
+    // ------ Play turn ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Submit a move for the current turn.
     /// Damage is resolved deterministically using block height as entropy source.
@@ -310,13 +313,13 @@ module neuralis::agent_arena {
 
         // Check win condition
         if (battle.hp1 == 0 || battle.hp2 == 0) {
-            _finish_battle(battle, &mut registry.credits, &mut registry.total_fees_collected, block_height);
+            finish_battle(battle, &mut registry.credits, &mut registry.total_fees_collected, block_height);
         };
     }
 
-    // ── Internal: finish battle ───────────────────────────────────────────────
+    // ------ Internal: finish battle ---------------------------------------------------------------------------------------------------------------------------------------------
 
-    fun _finish_battle(
+    fun finish_battle(
         battle          : &mut Battle,
         credits         : &mut Table<vector<u8>, u64>,
         total_fees      : &mut u64,
@@ -354,7 +357,7 @@ module neuralis::agent_arena {
         });
     }
 
-    // ── View functions ────────────────────────────────────────────────────────
+    // ------ View functions ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     #[view]
     public fun get_credits(module_deployer: address, player: address): u64 acquires Registry {
@@ -394,10 +397,10 @@ module neuralis::agent_arena {
 
     #[view]
     public fun registry_object_address(deployer: address): address {
-        object::create_object_address(&deployer, b"neuralis_agent_arena_v1")
+        object::create_object_address(&deployer, b"neuralis_agent_arena_v2")
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
+    // ------ Internal helpers ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     fun addr_key(addr: address): vector<u8> {
         bcs::to_bytes(&addr)

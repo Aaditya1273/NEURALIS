@@ -1,7 +1,7 @@
-/// ProgrammableIntents — AI-to-on-chain intent execution for NEURALIS.
+/// ProgrammableIntents - AI-to-on-chain intent execution for NEURALIS.
 ///
 /// What this module does
-/// ─────────────────────
+/// ---------------------------------------------------------------
 /// Users express goals in natural language ("Maximize safe yield with 100 USDC").
 /// The off-chain Claude agent interprets the intent, builds a structured
 /// IntentPayload, signs it with the keeper key, and submits it here.
@@ -11,29 +11,29 @@
 ///      params_hash, deadline, chain_id, nonce).
 ///   2. Checks the intent has not expired (deadline > current block time).
 ///   3. Checks the nonce to prevent replay.
-///   4. Records the intent on-chain (status: PENDING → EXECUTED / FAILED).
+///   4. Records the intent on-chain (status: PENDING --- EXECUTED / FAILED).
 ///   5. Emits a typed event so the frontend can react in real time.
 ///   6. Optionally calls a downstream action (e.g. trigger a vault rebalance
 ///      via the cosmos precompile, or record a yield harvest).
 ///
 /// Action types (u8)
-/// ─────────────────
-///   0 = REBALANCE_VAULT   — agent rebalanced the EVM vault
-///   1 = HARVEST_YIELD     — agent harvested yield from a strategy
-///   2 = BRIDGE_LIQUIDITY  — agent bridged liquidity cross-chain
-///   3 = ARENA_ENTER       — agent entered the Arena with earned credits
+/// ---------------------------------------------------
+///   0 = REBALANCE_VAULT   - agent rebalanced the EVM vault
+///   1 = HARVEST_YIELD     - agent harvested yield from a strategy
+///   2 = BRIDGE_LIQUIDITY  - agent bridged liquidity cross-chain
+///   3 = ARENA_ENTER       - agent entered the Arena with earned credits
 ///
 /// Signature scheme
-/// ────────────────
+/// ------------------------------------------------
 /// The keeper signs:
 ///   SHA3-256( BCS(IntentPayload without signature field) )
 /// using an Ed25519 key.  Initia's stdlib provides `ed25519::verify_signature`.
 ///
 /// Nonce
-/// ─────
+/// ---------------
 /// Per-owner nonce stored in the Registry.  Prevents replay of the same
 /// signed payload.
-module neuralis::programmable_intents {
+module neuralis::programmable_intents_v2 {
     use std::signer;
     use std::error;
     use std::string::String;
@@ -46,7 +46,7 @@ module neuralis::programmable_intents {
     use initia_std::block;
     use initia_std::ed25519;
 
-    // ── Action type constants ─────────────────────────────────────────────────
+    // ------ Action type constants ---------------------------------------------------------------------------------------------------------------------------------------------------
 
     const ACTION_REBALANCE_VAULT  : u8 = 0;
     const ACTION_HARVEST_YIELD    : u8 = 1;
@@ -54,14 +54,14 @@ module neuralis::programmable_intents {
     const ACTION_ARENA_ENTER      : u8 = 3;
     const MAX_ACTION_TYPE         : u8 = 3;
 
-    // ── Intent status constants ───────────────────────────────────────────────
+    // ------ Intent status constants ---------------------------------------------------------------------------------------------------------------------------------------------
 
     const STATUS_PENDING  : u8 = 0;
     const STATUS_EXECUTED : u8 = 1;
     const STATUS_FAILED   : u8 = 2;
     const STATUS_EXPIRED  : u8 = 3;
 
-    // ── Error codes ───────────────────────────────────────────────────────────
+    // ------ Error codes ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     const ENOT_ADMIN           : u64 = 1;
     const EINVALID_ACTION_TYPE : u64 = 2;
@@ -72,18 +72,18 @@ module neuralis::programmable_intents {
     const EALREADY_INITIALIZED : u64 = 7;
     const EINTENT_NOT_PENDING  : u64 = 8;
 
-    // ── On-chain resources ────────────────────────────────────────────────────
+    // ------ On-chain resources ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    /// Global registry — stored at the deterministic object address.
+    /// Global registry - stored at the deterministic object address.
     struct Registry has key {
         /// Address allowed to submit intents (the keeper / agent wallet).
         admin          : address,
         /// Ed25519 public key of the keeper that signs intent payloads.
         keeper_pubkey  : vector<u8>,
         extend_ref     : ExtendRef,
-        /// intent_id (u64) → IntentRecord
+        /// intent_id (u64) --- IntentRecord
         intents        : Table<u64, IntentRecord>,
-        /// owner_address_bytes → current nonce (u64)
+        /// owner_address_bytes --- current nonce (u64)
         nonces         : Table<vector<u8>, u64>,
         /// Monotonically increasing intent ID counter
         next_intent_id : u64,
@@ -99,7 +99,7 @@ module neuralis::programmable_intents {
         action_type : u8,
         /// BCS-encoded action-specific parameters (decoded off-chain).
         params      : vector<u8>,
-        /// SHA3-256 of params — included in the signed message.
+        /// SHA3-256 of params - included in the signed message.
         params_hash : vector<u8>,
         /// Unix timestamp (seconds) after which the intent is invalid.
         deadline    : u64,
@@ -114,8 +114,9 @@ module neuralis::programmable_intents {
         executed_at_time  : u64,
     }
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ------ Events ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+    #[event]
     struct IntentSubmittedEvent has drop, store {
         intent_id   : u64,
         owner       : address,
@@ -126,6 +127,7 @@ module neuralis::programmable_intents {
         timestamp   : u64,
     }
 
+    #[event]
     struct IntentExecutedEvent has drop, store {
         intent_id   : u64,
         owner       : address,
@@ -134,6 +136,7 @@ module neuralis::programmable_intents {
         timestamp   : u64,
     }
 
+    #[event]
     struct IntentFailedEvent has drop, store {
         intent_id   : u64,
         owner       : address,
@@ -143,7 +146,7 @@ module neuralis::programmable_intents {
         timestamp   : u64,
     }
 
-    // ── Initialization ────────────────────────────────────────────────────────
+    // ------ Initialization ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Called once by the deployer after `minitiad move deploy`.
     ///
@@ -158,12 +161,12 @@ module neuralis::programmable_intents {
         let reg_addr   = registry_object_address(admin_addr);
         assert!(!exists<Registry>(reg_addr), error::already_exists(EALREADY_INITIALIZED));
 
-        let constructor = object::create_named_object(admin, b"neuralis_programmable_intents_v1");
+        let constructor = object::create_named_object(admin, b"neuralis_programmable_intents_v2");
         let extend_ref  = object::generate_extend_ref(&constructor);
         let obj_signer  = object::generate_signer(&constructor);
 
         move_to(&obj_signer, Registry {
-            admin,
+            admin          : admin_addr,
             keeper_pubkey,
             extend_ref,
             intents        : table::new<u64, IntentRecord>(),
@@ -174,7 +177,7 @@ module neuralis::programmable_intents {
         });
     }
 
-    // ── Submit intent ─────────────────────────────────────────────────────────
+    // ------ Submit intent ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Submit a keeper-signed intent on behalf of `owner`.
     ///
@@ -205,11 +208,11 @@ module neuralis::programmable_intents {
         assert!(keeper_addr == registry.admin,  error::permission_denied(ENOT_ADMIN));
         assert!(action_type <= MAX_ACTION_TYPE,  error::invalid_argument(EINVALID_ACTION_TYPE));
 
-        // ── Deadline check ────────────────────────────────────────────────────
+        // ------ Deadline check ------------------------------------------------------------------------------------------------------------------------------------------------------------
         let (block_height, timestamp) = block::get_block_info();
         assert!(timestamp <= deadline, error::invalid_argument(EINTENT_EXPIRED));
 
-        // ── Nonce check ───────────────────────────────────────────────────────
+        // ------ Nonce check ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
         let owner_key     = bcs::to_bytes(&owner);
         let expected_nonce = if (table::contains(&registry.nonces, owner_key)) {
             *table::borrow(&registry.nonces, owner_key)
@@ -218,23 +221,20 @@ module neuralis::programmable_intents {
         };
         assert!(nonce == expected_nonce, error::invalid_argument(ENONCE_MISMATCH));
 
-        // ── Signature verification ────────────────────────────────────────────
+        // ------ Signature verification ------------------------------------------------------------------------------------------------------------------------------------
         let params_hash = hash::sha3_256(params);
         let msg         = build_signed_message(
             owner, action_type, &params_hash, deadline, nonce
         );
-        let msg_hash    = hash::sha3_256(msg);
 
+        let pk  = ed25519::public_key_from_bytes(registry.keeper_pubkey);
+        let sig = ed25519::signature_from_bytes(signature);
         assert!(
-            ed25519::verify_signature(
-                &registry.keeper_pubkey,
-                &msg_hash,
-                &signature,
-            ),
+            ed25519::verify(msg, &pk, &sig),
             error::invalid_argument(EINVALID_SIGNATURE)
         );
 
-        // ── Record intent ─────────────────────────────────────────────────────
+        // ------ Record intent ---------------------------------------------------------------------------------------------------------------------------------------------------------------
         let intent_id = registry.next_intent_id;
         registry.next_intent_id = intent_id + 1;
 
@@ -273,7 +273,7 @@ module neuralis::programmable_intents {
         });
     }
 
-    // ── Mark executed ─────────────────────────────────────────────────────────
+    // ------ Mark executed ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Mark a PENDING intent as EXECUTED.
     /// Called by the keeper after the downstream EVM transaction is confirmed.
@@ -309,7 +309,7 @@ module neuralis::programmable_intents {
         });
     }
 
-    // ── Mark failed ───────────────────────────────────────────────────────────
+    // ------ Mark failed ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Mark a PENDING intent as FAILED (e.g. RiskEngine rejected the rebalance).
     public entry fun mark_failed(
@@ -346,7 +346,7 @@ module neuralis::programmable_intents {
         });
     }
 
-    // ── Admin: update keeper pubkey ───────────────────────────────────────────
+    // ------ Admin: update keeper pubkey ---------------------------------------------------------------------------------------------------------------------------------
 
     /// Rotate the keeper Ed25519 public key (e.g. after key rotation).
     public entry fun update_keeper_pubkey(
@@ -360,7 +360,7 @@ module neuralis::programmable_intents {
         registry.keeper_pubkey = new_pubkey;
     }
 
-    // ── View functions ────────────────────────────────────────────────────────
+    // ------ View functions ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     #[view]
     public fun get_intent_status(
@@ -419,16 +419,16 @@ module neuralis::programmable_intents {
 
     #[view]
     public fun registry_object_address(deployer: address): address {
-        object::create_object_address(&deployer, b"neuralis_programmable_intents_v1")
+        object::create_object_address(&deployer, b"neuralis_programmable_intents_v2")
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
+    // ------ Internal helpers ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Build the canonical message the keeper must sign.
     /// Layout: BCS(owner) ++ BCS(action_type) ++ params_hash(32 bytes)
     ///         ++ BCS(deadline) ++ BCS(nonce)
     /// The chain_id is implicitly enforced because the module address is
-    /// chain-specific (different chains → different module addresses).
+    /// chain-specific (different chains --- different module addresses).
     fun build_signed_message(
         owner      : address,
         action_type: u8,
