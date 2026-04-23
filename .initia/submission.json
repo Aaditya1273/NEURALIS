@@ -1,0 +1,12 @@
+{
+  "project_name": "NEURALIS",
+  "rollup_chain_id": "neuralis-1",
+  "vm": "evm",
+  "deployed_address": "0x6d96cb6f29c4889ac9e7741156979cb29a3ebc59",
+  "l1_registration_hash": "336F975E9E627A3540F304770049CF077943D64649A2FCCB468DABB0AAD9E758",
+  "native_feature": "auto-signing",
+  "ai_model": "Llama-3-70b-Groq",
+  "core_logic_path": "contracts/src/VaultManager.sol",
+  "rebalancer_path": "agent/src/executor.js",
+  "frontend_path": "frontend/app/(dashboard)/vault/page.tsx"
+}

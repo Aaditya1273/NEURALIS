@@ -1,37 +1,37 @@
-/// LaborBadge — Soulbound proof-of-work token for NEURALIS agents.
+/// LaborBadge - Soulbound proof-of-work token for NEURALIS agents.
 ///
 /// Architecture
-/// ────────────
+/// ------------------------------------
 /// All badge data lives inside a single Registry object stored at a
 /// deterministic address derived from the deployer + seed.  This avoids
 /// the "need a &signer for every recipient" problem that exists in Aptos/
 /// Initia MoveVM when you want to move_to an arbitrary address.
 ///
 /// The Registry holds two tables:
-///   • entries    : vector<u8> → BadgeEntry   (keyed by owner_addr ++ badge_type)
-///   • mint_counts: u8         → u64          (global mint counter per type)
+///   --- entries    : vector<u8> --- BadgeEntry   (keyed by owner_addr ++ badge_type)
+///   --- mint_counts: u8         --- u64          (global mint counter per type)
 ///
 /// Soulbound guarantee
-/// ───────────────────
+/// ---------------------------------------------------------
 /// BadgeEntry has `store` (required to live inside a Table) but the module
 /// exposes NO transfer or copy entry function.  The only way to create or
 /// modify a BadgeEntry is through `mint_badge` / `level_up_badge`, both of
 /// which are admin-gated.  There is no way for a user to move or copy a badge.
 ///
 /// Badge types (u8)
-/// ────────────────
-///   0 = YIELD_HARVESTER  — first successful rebalance
-///   1 = REBALANCE_MASTER — 10 triggered rebalances
-///   2 = ARENA_CHAMPION   — first Arena win
-///   3 = PROTOCOL_VETERAN — 100 total agent cycles
+/// ------------------------------------------------
+///   0 = YIELD_HARVESTER  - first successful rebalance
+///   1 = REBALANCE_MASTER - 10 triggered rebalances
+///   2 = ARENA_CHAMPION   - first Arena win
+///   3 = PROTOCOL_VETERAN - 100 total agent cycles
 ///
 /// Integration with the EVM keeper
-/// ────────────────────────────────
+/// ------------------------------------------------------------------------------------------------
 /// After KeeperExecutor.execute() confirms on the EVM side, the Node.js
 /// agent calls the Cosmos `cosmos::move_execute` precompile (or the REST
 /// endpoint) to invoke `mint_badge` / `level_up_badge` on this module.
 /// See agent/src/labor_badge_client.js for the integration code.
-module neuralis::labor_badge {
+module neuralis::labor_badge_v2 {
     use std::signer;
     use std::error;
     use std::string::String;
@@ -42,7 +42,7 @@ module neuralis::labor_badge {
     use initia_std::object::{Self, ExtendRef};
     use initia_std::block;
 
-    // ── Badge type constants ──────────────────────────────────────────────────
+    // ------ Badge type constants ------------------------------------------------------------------------------------------------------------------------------------------------------
 
     const BADGE_YIELD_HARVESTER  : u8 = 0;
     const BADGE_REBALANCE_MASTER : u8 = 1;
@@ -50,7 +50,7 @@ module neuralis::labor_badge {
     const BADGE_PROTOCOL_VETERAN : u8 = 3;
     const MAX_BADGE_TYPE         : u8 = 3;
 
-    // ── Error codes ───────────────────────────────────────────────────────────
+    // ------ Error codes ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     const ENOT_ADMIN          : u64 = 1;
     const EINVALID_BADGE_TYPE : u64 = 2;
@@ -58,7 +58,7 @@ module neuralis::labor_badge {
     const EBADGE_NOT_FOUND    : u64 = 4;
     const EALREADY_INITIALIZED: u64 = 5;
 
-    // ── On-chain resources ────────────────────────────────────────────────────
+    // ------ On-chain resources ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Stored at the deterministic registry object address.
     struct Registry has key {
@@ -66,25 +66,29 @@ module neuralis::labor_badge {
         admin      : address,
         /// Needed to derive a signer for the registry object later.
         extend_ref : ExtendRef,
-        /// (bcs(owner) ++ badge_type) → BadgeEntry
+        /// (bcs(owner) ++ badge_type) --- BadgeEntry
         entries    : Table<vector<u8>, BadgeEntry>,
-        /// badge_type → total minted
+        /// badge_type --- total minted
         mint_counts: Table<u8, u64>,
     }
 
     /// The badge data.  `store` is required so it can live inside a Table.
-    /// No `copy` — cannot be duplicated.
-    /// No transfer entry function is exposed — effectively soulbound.
+    /// No `copy` - cannot be duplicated.
+    /// No transfer entry function is exposed - effectively soulbound.
     struct BadgeEntry has store {
-        badge_type  : u8,
-        level       : u64,
-        minted_at   : u64,   // block timestamp (seconds since epoch)
-        minted_block: u64,   // block height
-        metadata    : String,
+        badge_type      : u8,
+        level           : u64,
+        minted_at       : u64,   // block timestamp
+        minted_block    : u64,   // block height
+        metadata        : String,
+        total_work_done : u64,   // Total rebalances
+        average_yield   : u64,   // Basis points
+        risk_score      : u64,   // 0-100
     }
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ------ Events ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+    #[event]
     struct BadgeMintedEvent has drop, store {
         owner       : address,
         badge_type  : u8,
@@ -94,6 +98,7 @@ module neuralis::labor_badge {
         timestamp   : u64,
     }
 
+    #[event]
     struct BadgeLeveledUpEvent has drop, store {
         owner       : address,
         badge_type  : u8,
@@ -103,7 +108,7 @@ module neuralis::labor_badge {
         timestamp   : u64,
     }
 
-    // ── Initialization ────────────────────────────────────────────────────────
+    // ------ Initialization ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Must be called once by the deployer right after `minitiad move deploy`.
     ///
@@ -116,8 +121,8 @@ module neuralis::labor_badge {
         let reg_addr = registry_object_address(admin_addr);
         assert!(!exists<Registry>(reg_addr), error::already_exists(EALREADY_INITIALIZED));
 
-        // Create a named object — gives us a stable, deterministic address
-        let constructor = object::create_named_object(admin, b"neuralis_labor_badge_v1");
+        // Create a named object - gives us a stable, deterministic address
+        let constructor = object::create_named_object(admin, b"neuralis_labor_badge_v2");
         let extend_ref  = object::generate_extend_ref(&constructor);
         let obj_signer  = object::generate_signer(&constructor);
 
@@ -136,7 +141,7 @@ module neuralis::labor_badge {
         });
     }
 
-    // ── Admin: mint ───────────────────────────────────────────────────────────
+    // ------ Admin: mint ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Mint a soulbound badge for `recipient`.
     ///
@@ -145,9 +150,9 @@ module neuralis::labor_badge {
     ///     [recipient_addr, badge_type, metadata_string])
     ///
     /// Reverts if:
-    ///   • caller is not admin
-    ///   • badge_type is out of range
-    ///   • recipient already holds this badge type
+    ///   --- caller is not admin
+    ///   --- badge_type is out of range
+    ///   --- recipient already holds this badge type
     public entry fun mint_badge(
         admin     : &signer,
         recipient : address,
@@ -171,10 +176,13 @@ module neuralis::labor_badge {
 
         table::add(&mut registry.entries, key, BadgeEntry {
             badge_type,
-            level       : 1,
-            minted_at   : timestamp,
-            minted_block: block_height,
+            level           : 1,
+            minted_at       : timestamp,
+            minted_block    : block_height,
             metadata,
+            total_work_done : 0,
+            average_yield   : 0,
+            risk_score      : 0,
         });
 
         let count = table::borrow_mut(&mut registry.mint_counts, badge_type);
@@ -190,10 +198,33 @@ module neuralis::labor_badge {
         });
     }
 
-    // ── Admin: level up ───────────────────────────────────────────────────────
+    /// Update the dynamic performance stats of an agent's badge.
+    public entry fun update_stats(
+        admin        : &signer,
+        owner        : address,
+        badge_type   : u8,
+        new_yield    : u64,
+        new_risk     : u64,
+    ) acquires Registry {
+        let admin_addr = signer::address_of(admin);
+        let reg_addr   = registry_object_address(admin_addr);
+        let registry   = borrow_global_mut<Registry>(reg_addr);
+
+        assert!(admin_addr == registry.admin, error::permission_denied(ENOT_ADMIN));
+
+        let key = make_key(owner, badge_type);
+        assert!(table::contains(&registry.entries, key), error::not_found(EBADGE_NOT_FOUND));
+
+        let entry = table::borrow_mut(&mut registry.entries, key);
+        entry.total_work_done = entry.total_work_done + 1;
+        entry.average_yield   = new_yield;
+        entry.risk_score      = new_risk;
+    }
+
+    // ------ Admin: level up ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Increment the level of an existing badge.
-    /// Emitted when the agent crosses a milestone (e.g. 10 rebalances → level 2).
+    /// Emitted when the agent crosses a milestone (e.g. 10 rebalances --- level 2).
     public entry fun level_up_badge(
         admin     : &signer,
         owner     : address,
@@ -224,7 +255,7 @@ module neuralis::labor_badge {
         });
     }
 
-    // ── Admin: transfer admin ─────────────────────────────────────────────────
+    // ------ Admin: transfer admin ---------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Transfer admin rights to a new address (e.g. a multisig after launch).
     public entry fun transfer_admin(admin: &signer, new_admin: address) acquires Registry {
@@ -235,7 +266,7 @@ module neuralis::labor_badge {
         registry.admin = new_admin;
     }
 
-    // ── View functions ────────────────────────────────────────────────────────
+    // ------ View functions ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     #[view]
     /// Returns true if `owner` holds a badge of `badge_type`.
@@ -297,12 +328,26 @@ module neuralis::labor_badge {
     }
 
     #[view]
-    /// Returns the deterministic registry object address for a given deployer.
-    public fun registry_object_address(deployer: address): address {
-        object::create_object_address(&deployer, b"neuralis_labor_badge_v1")
+    /// Returns (total_work_done, average_yield, risk_score)
+    public fun get_badge_stats(
+        module_deployer: address,
+        owner          : address,
+        badge_type     : u8,
+    ): (u64, u64, u64) acquires Registry {
+        let registry = borrow_global<Registry>(registry_object_address(module_deployer));
+        let key      = make_key(owner, badge_type);
+        assert!(table::contains(&registry.entries, key), error::not_found(EBADGE_NOT_FOUND));
+        let entry = table::borrow(&registry.entries, key);
+        (entry.total_work_done, entry.average_yield, entry.risk_score)
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
+    #[view]
+    /// Returns the deterministic registry object address for a given deployer.
+    public fun registry_object_address(deployer: address): address {
+        object::create_object_address(&deployer, b"neuralis_labor_badge_v2")
+    }
+
+    // ------ Internal helpers ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /// Composite key: BCS-encoded owner address concatenated with badge_type byte.
     /// Guaranteed unique per (owner, badge_type) pair.
@@ -310,5 +355,26 @@ module neuralis::labor_badge {
         let key = bcs::to_bytes(&owner);
         vector::push_back(&mut key, badge_type);
         key
+    }
+
+    // ------ Tests ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    #[test_only]
+    use std::string;
+
+    #[test(admin = @0x42, user = @0x43)]
+    fun test_mint_badge(admin: &signer, user: &signer) acquires Registry {
+        let admin_addr = signer::address_of(admin);
+        let user_addr = signer::address_of(user);
+
+        // 1. Initialize
+        initialize(admin);
+
+        // 2. Mint a badge
+        mint_badge(admin, user_addr, 1, string::utf8(b"Rebalance Master"));
+
+        // 3. Verify
+        assert!(has_badge(admin_addr, user_addr, 1), 100);
+        assert!(get_badge_level(admin_addr, user_addr, 1) == 1, 101);
     }
 }

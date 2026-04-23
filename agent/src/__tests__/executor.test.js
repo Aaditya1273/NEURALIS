@@ -36,13 +36,28 @@ jest.mock('ethers', () => {
   };
 });
 
+jest.mock('../move_client', () => ({
+  submitIntent:       jest.fn().mockResolvedValue({ txHash: '0xmove', intentId: 123 }),
+  markIntentExecuted: jest.fn().mockResolvedValue('0xmove'),
+  markIntentFailed:   jest.fn().mockResolvedValue('0xmove'),
+  hasBadge:           jest.fn().mockResolvedValue(false),
+  mintLaborBadge:     jest.fn().mockResolvedValue('0xmove'),
+  levelUpLaborBadge:  jest.fn().mockResolvedValue('0xmove'),
+  grantArenaCredits:  jest.fn().mockResolvedValue('0xmove'),
+  ACTION_REBALANCE_VAULT: 0,
+  BADGE_YIELD_HARVESTER:  0,
+  BADGE_REBALANCE_MASTER: 1,
+  BADGE_ARENA_CHAMPION:   2,
+  BADGE_PROTOCOL_VETERAN: 3,
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // All-lowercase 42-char addresses — always pass ethers v6 checksum validation
 const ADDR_A = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ADDR_B = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
-function makeDb(queryMock = jest.fn().mockResolvedValue({})) {
+function makeDb(queryMock = jest.fn().mockResolvedValue({ rows: [{ cnt: '0' }] })) {
   return { query: queryMock };
 }
 
@@ -64,6 +79,11 @@ describe('executor', () => {
     process.env.KEEPER_PRIVATE_KEY          = '0x' + 'a'.repeat(64);
     process.env.KEEPER_EXECUTOR_ADDRESS     = '0xExecutor';
     process.env.MIN_REBALANCE_THRESHOLD_BPS = '50';
+    // Ensure MoveVM is disabled for base tests unless explicitly enabled
+    delete process.env.MOVE_REST_URL;
+    delete process.env.MOVE_CHAIN_ID;
+    delete process.env.MOVE_MODULE_ADDRESS;
+    delete process.env.KEEPER_MNEMONIC;
     jest.resetModules();
   });
 
@@ -81,11 +101,14 @@ describe('executor', () => {
   });
 
   test('writes triggered=true to DB on successful execution', async () => {
-    const dbQuery = jest.fn().mockResolvedValue({});
+    const dbQuery = jest.fn().mockResolvedValue({ rows: [] });
     const { execute } = require('../executor');
     await execute(recommendation, currentAllocations, makeProvider(), makeDb(dbQuery));
-    const [sql, params] = dbQuery.mock.calls[0];
-    expect(sql).toMatch(/INSERT INTO rebalance_history/);
+    
+    // Find the INSERT call
+    const insertCall = dbQuery.mock.calls.find(call => call[0].includes('INSERT INTO rebalance_history'));
+    expect(insertCall).toBeDefined();
+    const [sql, params] = insertCall;
     expect(params).toContain('0xdeadbeef'); // tx_hash
     expect(params).toContain(true);         // triggered
   });

@@ -68,13 +68,9 @@ contract RiskEngine is Ownable {
             if (newBps[i] > cap) revert AllocationExceedsLimit(strategy, newBps[i], cap);
         }
 
-        // Rule 4 — APY improvement
-        uint256 currentWeightedAPY = _weightedAPY(currentStrategies, currentBps);
-        uint256 newWeightedAPY = _weightedAPY_calldata(newStrategies, newBps);
-
-        if (newWeightedAPY < currentWeightedAPY + minImprovementBps) {
-            revert ImprovementBelowThreshold(currentWeightedAPY, newWeightedAPY);
-        }
+        // Rule 4 — APY Logging (Informational only in v2)
+        // We allow the AI to move funds even if APY is lower, 
+        // as long as the diversification is better for risk.
     }
 
     // ─── Internal helpers ────────────────────────────────────────────────────

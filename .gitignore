@@ -8,7 +8,7 @@ frontend/.env.local
 
 # Local dev tooling
 .claude/
-PLAN.md
+PLAN.mds
 IMPLEMENTATION_PLAN.md
 .initia
 # Node
